@@ -1,16 +1,42 @@
 import binascii
+import pickle
 import socket
 
 
-def main():
-    domain_name = input("Enter the name address:\n")
-    query = build_message(address=domain_name)
-    returned_data = send_udp_message(query, "1.1.1.1", 53)
-    response = binascii.hexlify(returned_data).decode()
-    res, res_ip = parse_response(response)
-    print("\nResponse:\n" + res)
-    print("----------")
-    print("Resolved IP for {} is {}".format(domain_name, res_ip))
+def write_to_file(res_dict):
+    try:
+        file = open('resolved', 'wb')
+        pickle.dump(res_dict, file)
+        file.close()
+        print("Cache file has been updated!")
+    except EOFError:
+        print("Something went wrong")
+
+
+def main(resolved_dict):
+    domain_name = input("Enter name address:\n")
+    if domain_name == "stop":
+        exit()
+    try:
+        if resolved_dict[domain_name][0] > 2:
+            print("Resolved IP for {} is {}".format(domain_name, resolved_dict[domain_name][1]))
+        else:
+            raise Exception
+    except:
+        query = build_message(address=domain_name)
+        returned_data = send_udp_message(query, "1.1.1.1", 53)
+        response = binascii.hexlify(returned_data).decode()
+        res, res_ip = parse_response(response)
+        print("\nResponse:\n" + res)
+        print("----------")
+        print("Resolved IP for {} is {}".format(domain_name, res_ip))
+        try:
+            resolved_dict[domain_name] = [resolved_dict[domain_name][0] + 1, resolved_dict[domain_name][1]]
+        except:
+            resolved_dict[domain_name] = [1, res_ip]
+
+        if resolved_dict[domain_name][0] > 2:
+            write_to_file(resolved_dict)
 
 
 def send_udp_message(message, address, port):
@@ -110,7 +136,6 @@ def parse_response(response):
     flags = response[4:8]
     flags = "{:b}".format(int(flags, 16)).zfill(16)
 
-
     QR = flags[0:1]
     decoded_response.append("QR: " + QR)
     OPCODE = flags[1:5]
@@ -141,7 +166,7 @@ def parse_response(response):
     # Question section
     question_parts = parse_parts(response, 24, [])
 
-    print('question parts', bytearray.fromhex(question_parts[0]).decode())
+    # print('question parts', bytearray.fromhex(question_parts[0]).decode())
 
     QNAME = ""
     QTYPE_STARTS = 0
@@ -226,7 +251,17 @@ def parse_parts(message, start, parts):
 
 
 if __name__ == '__main__':
-    main()
+    resolved = dict()
+    try:
+        with open('resolved', 'rb') as handle:
+            data = handle.read()
+        resolved = pickle.loads(data)
+    except FileNotFoundError:
+        print("Create new cache file!")
+    while True:
+        main(resolved)
+        print("Cache:", resolved)
+        print('***')
 
     # print("{:04x}".format(123))
     # print(format(123, '04x'))

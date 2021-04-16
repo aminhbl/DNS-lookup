@@ -23,7 +23,7 @@ def main(parts):
 
     if answer_count > 0:
         print('Resolved IP for {} is {}'.format(parts[1], found_ip))
-        exit()
+        return
     else:
         random.shuffle(follow)
         for ip in follow:
