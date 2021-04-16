@@ -4,10 +4,13 @@ import socket
 
 def main():
     domain_name = input("Enter the name address:\n")
-    message = build_message(address=domain_name)
-    response = send_udp_message(message, "1.1.1.1", 53)
-    print("\nResponse:\n" + response)
-    print("\nResponse (decoded):" + parse_response(response))
+    query = build_message(address=domain_name)
+    returned_data = send_udp_message(query, "1.1.1.1", 53)
+    response = binascii.hexlify(returned_data).decode()
+    res, res_ip = parse_response(response)
+    print("\nResponse:\n" + res)
+    print("----------")
+    print("Resolved IP for {} is {}".format(domain_name, res_ip))
 
 
 def send_udp_message(message, address, port):
@@ -20,20 +23,20 @@ def send_udp_message(message, address, port):
         data, _ = sock.recvfrom(4096)
     finally:
         sock.close()
-    return binascii.hexlify(data).decode()
+    return data
 
 
 def build_message(type="A", address=""):
     message = ""
 
-    QR = 0  # Query: 0, Response: 1     1bit
-    OPCODE = 0  # Standard query            4bit
-    AA = 0  # ?                         1bit
-    TC = 0  # Message is truncated?     1bit
-    RD = 1  # Recursion?                1bit
-    RA = 0  # ?                         1bit
-    Z = 0  # ?                         3bit
-    RCODE = 0  # ?                         4bit
+    QR = 0
+    OPCODE = 0
+    AA = 0
+    TC = 0
+    RD = 1
+    RA = 0
+    Z = 0
+    RCODE = 0
 
     flags = str(QR)
     flags += str(OPCODE).zfill(4)
@@ -42,12 +45,12 @@ def build_message(type="A", address=""):
     flags += str(RCODE).zfill(4)
     flags = "{:04x}".format(int(flags, 2))
 
-    QDCOUNT = 1  # Number of questions           4bit
-    ANCOUNT = 0  # Number of answers             4bit
-    NSCOUNT = 0  # Number of authority records   4bit
-    ARCOUNT = 0  # Number of additional records  4bit
+    QDCOUNT = 1
+    ANCOUNT = 0
+    NSCOUNT = 0
+    ARCOUNT = 0
 
-    ID = 43690  # 16-bit identifier (0-65535) # 43690 equals 'aaaa'
+    ID = 43690
     message += "{:04x}".format(ID)
     message += flags
     message += "{:04x}".format(QDCOUNT)
@@ -55,21 +58,17 @@ def build_message(type="A", address=""):
     message += "{:04x}".format(NSCOUNT)
     message += "{:04x}".format(ARCOUNT)
 
-    # QNAME is url split up by '.', preceded by int indicating length of part
     address_parts = address.split(".")
     for part in address_parts:
         addr_len = "{:02x}".format(len(part))
         addr_part = part.encode().hex()
         message += addr_len
         message += addr_part
+    message += "00"
 
-    message += "00"  # Terminating bit for QNAME
-
-    # Type of request
     QTYPE = get_type(type)
     message += QTYPE
 
-    # Class for lookup. 1 is Internet
     QCLASS = 1
     message += "{:04x}".format(QCLASS)
 
@@ -129,15 +128,20 @@ def parse_response(response):
     RCODE = flags[12:16]
     decoded_response.append("RCODE: " + RCODE)
 
-    QDCOUNT = response[8:12]
-    ANCOUNT = response[12:16]
-    NSCOUNT = response[16:20]
-    ARCOUNT = response[20:24]
+    QDCOUNT = int(response[8:12], 16)
+    ANCOUNT = int(response[12:16], 16)
+    NSCOUNT = int(response[16:20], 16)
+    ARCOUNT = int(response[20:24], 16)
+
+    decoded_response.append("QDCOUNT: " + str(QDCOUNT))
+    decoded_response.append("ANCOUNT: " + str(ANCOUNT))
+    decoded_response.append("NSCOUNT: " + str(NSCOUNT))
+    decoded_response.append("ARCOUNT: " + str(ARCOUNT))
 
     # Question section
     question_parts = parse_parts(response, 24, [])
 
-    # print('question parts', bytearray.fromhex(question_parts[0]).decode())
+    print('question parts', bytearray.fromhex(question_parts[0]).decode())
 
     QNAME = ""
     QTYPE_STARTS = 0
@@ -158,13 +162,13 @@ def parse_response(response):
     decoded_response.append("QCLASS: " + QCLASS)
 
     # Answer section
+    resolved_ip = ''
     ANSWER_SECTION_STARTS = QCLASS_STARTS + 4
 
-    NUM_ANSWERS = max([int(ANCOUNT, 16), int(NSCOUNT, 16), int(ARCOUNT, 16)])
-    if NUM_ANSWERS > 0:
+    if ANCOUNT > 0:
         decoded_response.append("\n# ANSWER SECTION")
 
-        for ANSWER_COUNT in range(NUM_ANSWERS):
+        for ANSWER_COUNT in range(ANCOUNT):
             if ANSWER_SECTION_STARTS < len(response):
                 ANAME = response[ANSWER_SECTION_STARTS:ANSWER_SECTION_STARTS + 4]  # Refers to Question
                 ATYPE = response[ANSWER_SECTION_STARTS + 4:ANSWER_SECTION_STARTS + 8]
@@ -174,9 +178,6 @@ def parse_response(response):
                 RDDATA = response[ANSWER_SECTION_STARTS + 24:ANSWER_SECTION_STARTS + 24 + (RDLENGTH * 2)]
 
                 if ATYPE == get_type("A"):
-                    # octets = [RDDATA[i:i + 2] for i in range(0, len(RDDATA), 2)]
-                    # print('octets')
-                    # print(octets)
                     ip_parts = []
                     for i in range(0, len(RDDATA), 2):
                         ip_parts.append(RDDATA[i:i + 2])
@@ -185,7 +186,7 @@ def parse_response(response):
                     for part in ip_parts:
                         RDDATA_decoded += str(int(part, 16)) + '.'
                     RDDATA_decoded = RDDATA_decoded[:-1]
-                    # RDDATA_decoded = ".".join(list(map(lambda x: str(int(x, 16)), ip_parts)))
+                    resolved_ip = RDDATA_decoded
                 else:
                     RDDATA_decoded = ".".join(
                         map(lambda p: binascii.unhexlify(p).decode('iso8859-1'), parse_parts(RDDATA, 0, [])))
@@ -198,11 +199,6 @@ def parse_response(response):
                 None
             else:
                 decoded_response.append("# ANSWER " + str(ANSWER_COUNT + 1))
-                decoded_response.append("QDCOUNT: " + str(int(QDCOUNT, 16)))
-                decoded_response.append("ANCOUNT: " + str(int(ANCOUNT, 16)))
-                decoded_response.append("NSCOUNT: " + str(int(NSCOUNT, 16)))
-                decoded_response.append("ARCOUNT: " + str(int(ARCOUNT, 16)))
-
                 decoded_response.append("ANAME: " + ANAME)
                 decoded_response.append("ATYPE: " + ATYPE + " (\"" + get_type(int(ATYPE, 16)) + "\")")
                 decoded_response.append("ACLASS: " + ACLASS)
@@ -210,14 +206,9 @@ def parse_response(response):
                 decoded_response.append("\nTTL: " + str(TTL))
                 decoded_response.append("RDLENGTH: " + str(RDLENGTH))
                 decoded_response.append("RDDATA: " + RDDATA)
-                decoded_response.append("RDDATA decoded (result): " + RDDATA_decoded + "\n")
-    print('rest of the response')
-    print(response[ANSWER_SECTION_STARTS:])
+                decoded_response.append("RDDATA decoded: " + RDDATA_decoded + "\n")
 
-    # Authority
-
-
-    return "\n".join(decoded_response)
+    return "\n".join(decoded_response), resolved_ip
 
 
 def parse_parts(message, start, parts):
@@ -232,17 +223,6 @@ def parse_parts(message, start, parts):
         part_start = end + 2
         part_len = message[end:part_start]
     return parts
-
-    # if len(part_len) == 0:
-    #     return parts
-    #
-    # part_end = part_start + (int(part_len, 16) * 2)
-    # parts.append(message[part_start:part_end])
-    #
-    # if message[part_end:part_end + 2] == "00" or part_end > len(message):
-    #     return parts
-    # else:
-    #     return parse_parts(message, part_end, parts)
 
 
 if __name__ == '__main__':
