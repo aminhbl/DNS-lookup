@@ -139,15 +139,13 @@ def parse_response(response):
     decoded_response.append("NSCOUNT: " + str(NSCOUNT))
     decoded_response.append("ARCOUNT: " + str(ARCOUNT))
 
-    # Question section
+    # Question
     question_parts = parse_parts(response, 24, [])
-
-    # print('question parts', bytearray.fromhex(question_parts[0]).decode())
 
     QNAME = ""
     QTYPE_STARTS = 0
     for part in question_parts:
-        QNAME += binascii.unhexlify(part).decode() + "."
+        QNAME += bytearray.fromhex(part).decode() + "."
         QTYPE_STARTS += len(part)
     QNAME = QNAME[:-1]
 
@@ -162,7 +160,7 @@ def parse_response(response):
     decoded_response.append("QTYPE: " + QTYPE + " (\"" + get_type(int(QTYPE, 16)) + "\")")
     decoded_response.append("QCLASS: " + QCLASS)
 
-    # Answer section
+    # Answer
     resolved_ip = ''
     ANSWER_SECTION_STARTS = QCLASS_STARTS + 4
 
