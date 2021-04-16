@@ -20,7 +20,7 @@ while True:
     message = bytesAddressPair[0]
     address = bytesAddressPair[1]
 
-    clientMsg = "Client Message: {}".format(message)
+    clientMsg = "Client Message: {}".format(message.decode())
     clientIP = "Client IP Address: {}".format(address)
     print(clientMsg)
     print(clientIP)

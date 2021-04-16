@@ -4,8 +4,7 @@ import socket
 def main():
     message = "Hello Server"
     local_address_port = ("127.0.0.1", 8080)
-    dns_address_port = ("8.8.8.8", 53)
-    send_request(message, dns_address_port)
+    send_request(message, local_address_port)
 
 
 def send_request(message, address_port):
@@ -21,8 +20,8 @@ def send_request(message, address_port):
     received_message = []
     try:
         received_message = UDPClientSocket.recvfrom(bufferSize)
-        # msg = "Message from Server {}".format(received_message[0].decode())
-        # print(msg)
+        msg = "Message from Server {}".format(received_message[0].decode())
+        print(msg)
     except socket.timeout:
         print("Request Time Out")
     finally:

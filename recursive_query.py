@@ -1,42 +1,18 @@
 import binascii
 import pickle
 import socket
+import cache_query
 
 
-def write_to_file(res_dict):
-    try:
-        file = open('resolved', 'wb')
-        pickle.dump(res_dict, file)
-        file.close()
-        print("Cache file has been updated!")
-    except EOFError:
-        print("Something went wrong")
-
-
-def main(resolved_dict):
-    domain_name = input("Enter name address:\n")
-    if domain_name == "stop":
-        exit()
-    try:
-        if resolved_dict[domain_name][0] > 2:
-            print("Resolved IP for {} is {}".format(domain_name, resolved_dict[domain_name][1]))
-        else:
-            raise Exception
-    except:
-        query = build_message(address=domain_name)
-        returned_data = send_udp_message(query, "1.1.1.1", 53)
-        response = binascii.hexlify(returned_data).decode()
-        res, res_ip = parse_response(response)
-        print("\nResponse:\n" + res)
-        print("----------")
-        print("Resolved IP for {} is {}".format(domain_name, res_ip))
-        try:
-            resolved_dict[domain_name] = [resolved_dict[domain_name][0] + 1, resolved_dict[domain_name][1]]
-        except:
-            resolved_dict[domain_name] = [1, res_ip]
-
-        if resolved_dict[domain_name][0] > 2:
-            write_to_file(resolved_dict)
+def main(domain_name):
+    query = build_message(address=domain_name)
+    returned_data = send_udp_message(query, "1.1.1.1", 53)
+    response = binascii.hexlify(returned_data).decode()
+    res, res_ip = parse_response(response)
+    print("\nResponse:\n" + res)
+    print("----------")
+    print("Resolved IP for {} is {}".format(domain_name, res_ip))
+    return res_ip
 
 
 def send_udp_message(message, address, port):
@@ -181,7 +157,7 @@ def parse_response(response):
     QTYPE = response[QTYPE_STARTS:QCLASS_STARTS]
     QCLASS = response[QCLASS_STARTS:QCLASS_STARTS + 4]
 
-    decoded_response.append("\n# QUESTION SECTION")
+    decoded_response.append("\nQUESTION:")
     decoded_response.append("QNAME: " + QNAME)
     decoded_response.append("QTYPE: " + QTYPE + " (\"" + get_type(int(QTYPE, 16)) + "\")")
     decoded_response.append("QCLASS: " + QCLASS)
@@ -191,7 +167,7 @@ def parse_response(response):
     ANSWER_SECTION_STARTS = QCLASS_STARTS + 4
 
     if ANCOUNT > 0:
-        decoded_response.append("\n# ANSWER SECTION")
+        decoded_response.append("\nANSWER:")
 
         for ANSWER_COUNT in range(ANCOUNT):
             if ANSWER_SECTION_STARTS < len(response):
@@ -251,17 +227,5 @@ def parse_parts(message, start, parts):
 
 
 if __name__ == '__main__':
-    resolved = dict()
-    try:
-        with open('resolved', 'rb') as handle:
-            data = handle.read()
-        resolved = pickle.loads(data)
-    except FileNotFoundError:
-        print("Create new cache file!")
-    while True:
-        main(resolved)
-        print("Cache:", resolved)
-        print('***')
-
-    # print("{:04x}".format(123))
-    # print(format(123, '04x'))
+    address = input("Enter name address:\n")
+    main(address)

@@ -23,12 +23,34 @@ def main(parts):
 
     if answer_count > 0:
         print('Resolved IP for {} is {}'.format(parts[1], found_ip))
-        return
+        exit()
     else:
         random.shuffle(follow)
         for ip in follow:
             new_parts = [ip, parts[1]]
             main(new_parts)
+
+
+def caching_main(parts):
+    print('Look for {} at {}'.format(parts[1], parts[0]))
+    response = lookup(parts[1], parts[0])
+    res, follow, answer_count, found_ip = parse_response(response)
+    if len(res) == 0:
+        print("didn't find it!")
+        return None
+
+    print("\nResponse:", res)
+    print("----------------------------------")
+    print(follow)
+
+    if answer_count > 0:
+        print('Resolved IP for {} is {}'.format(parts[1], found_ip))
+        return found_ip
+    else:
+        random.shuffle(follow)
+        for ip in follow:
+            new_parts = [ip, parts[1]]
+            caching_main(new_parts)
 
 
 def send_udp_message(message, address, port):
@@ -47,14 +69,14 @@ def send_udp_message(message, address, port):
 def build_message(type="A", address=""):
     message = ""
 
-    QR = 0  # Query: 0, Response: 1     1bit
-    OPCODE = 0  # Standard query            4bit
-    AA = 0  # ?                         1bit
-    TC = 0  # Message is truncated?     1bit
-    RD = 0  # Recursion?                1bit
-    RA = 0  # ?                         1bit
-    Z = 0  # ?                         3bit
-    RCODE = 0  # ?                         4bit
+    QR = 0
+    OPCODE = 0
+    AA = 0
+    TC = 0
+    RD = 0
+    RA = 0
+    Z = 0
+    RCODE = 0
 
     flags = str(QR)
     flags += str(OPCODE).zfill(4)
@@ -63,12 +85,12 @@ def build_message(type="A", address=""):
     flags += str(RCODE).zfill(4)
     flags = "{:04x}".format(int(flags, 2))
 
-    QDCOUNT = 1  # Number of questions           4bit
-    ANCOUNT = 0  # Number of answers             4bit
-    NSCOUNT = 0  # Number of authority records   4bit
-    ARCOUNT = 0  # Number of additional records  4bit
+    QDCOUNT = 1
+    ANCOUNT = 0
+    NSCOUNT = 0
+    ARCOUNT = 0
 
-    ID = 43690  # 16-bit identifier (0-65535) # 43690 equals 'aaaa'
+    ID = 43690
     message += "{:04x}".format(ID)
     message += flags
     message += "{:04x}".format(QDCOUNT)
@@ -76,20 +98,17 @@ def build_message(type="A", address=""):
     message += "{:04x}".format(NSCOUNT)
     message += "{:04x}".format(ARCOUNT)
 
-    # QNAME is url split up by '.', preceded by int indicating length of part
     address_parts = address.split(".")
     for part in address_parts:
         addr_len = "{:02x}".format(len(part))
         addr_part = part.encode().hex()
         message += addr_len
         message += addr_part
-    message += "00"  # Terminating bit for QNAME
+    message += "00"
 
-    # Type of request
     QTYPE = get_type(type)
     message += QTYPE
 
-    # Class for lookup. 1 is Internet
     QCLASS = 1
     message += "{:04x}".format(QCLASS)
 
@@ -161,7 +180,7 @@ def parse_response(response):
     decoded_response.append("NSCOUNT: " + str(NSCOUNT))
     decoded_response.append("ARCOUNT: " + str(ARCOUNT))
 
-    # Question section
+    # Question
     question_parts = parse_domain_name(response, 24, [])
 
     QNAME = ""
@@ -177,7 +196,7 @@ def parse_response(response):
     QTYPE = response[QTYPE_STARTS:QCLASS_STARTS]
     QCLASS = response[QCLASS_STARTS:QCLASS_STARTS + 4]
 
-    decoded_response.append("\n# QUESTION SECTION")
+    decoded_response.append("\nQUESTION:")
     decoded_response.append("QNAME: " + QNAME)
     decoded_response.append("QTYPE: " + QTYPE + " (\"" + get_type(int(QTYPE, 16)) + "\")")
     decoded_response.append("QCLASS: " + QCLASS)
@@ -186,7 +205,7 @@ def parse_response(response):
     # Answer
     final_ip = ''
     if ANCOUNT > 0:
-        decoded_response.append("\n# ANSWER SECTION")
+        decoded_response.append("\nANSWER:")
         for AN in range(ANCOUNT):
             RR_start, temp_res, final_ip = parse_RR(RR_start, response, 'ANSWER', AN)
             if len(temp_res) == 0:
@@ -195,7 +214,7 @@ def parse_response(response):
 
     # Authority
     if NSCOUNT > 0:
-        decoded_response.append("\n# AUTHORITY SECTION")
+        decoded_response.append("\nAUTHORITY:")
         for AN in range(NSCOUNT):
             RR_start, temp_res, _ = parse_RR(RR_start, response, "AUTHORITY", AN)
             if len(temp_res) == 0:
@@ -205,7 +224,7 @@ def parse_response(response):
     # Additional
     follow = []
     if ARCOUNT > 0:
-        decoded_response.append("\n# ADDITIONAL SECTION")
+        decoded_response.append("\nADDITIONAL:")
         for AR in range(ARCOUNT):
             RR_start, temp_res, follow_up = parse_RR(RR_start, response, "ADDITIONAL", AR)
             if len(temp_res) == 0:
