@@ -11,7 +11,6 @@ def main():
 
 
 def send_udp_message(message, address, port):
-
     message = message.replace(" ", "").replace("\n", "")
     server_address = (address, port)
 
@@ -21,11 +20,12 @@ def send_udp_message(message, address, port):
         data, _ = sock.recvfrom(4096)
     finally:
         sock.close()
-    return binascii.hexlify(data).decode("utf-8")
+    return binascii.hexlify(data).decode()
 
 
 def build_message(type="A", address=""):
-    ID = 43690  # 16-bit identifier (0-65535) # 43690 equals 'aaaa'
+    message = ""
+
     QR = 0  # Query: 0, Response: 1     1bit
     OPCODE = 0  # Standard query            4bit
     AA = 0  # ?                         1bit
@@ -47,7 +47,7 @@ def build_message(type="A", address=""):
     NSCOUNT = 0  # Number of authority records   4bit
     ARCOUNT = 0  # Number of additional records  4bit
 
-    message = ""
+    ID = 43690  # 16-bit identifier (0-65535) # 43690 equals 'aaaa'
     message += "{:04x}".format(ID)
     message += flags
     message += "{:04x}".format(QDCOUNT)
@@ -56,8 +56,8 @@ def build_message(type="A", address=""):
     message += "{:04x}".format(ARCOUNT)
 
     # QNAME is url split up by '.', preceded by int indicating length of part
-    addr_parts = address.split(".")
-    for part in addr_parts:
+    address_parts = address.split(".")
+    for part in address_parts:
         addr_len = "{:02x}".format(len(part))
         addr_part = part.encode().hex()
         message += addr_len
@@ -109,12 +109,8 @@ def parse_response(response):
     decoded_response.append("Query Flags: ")
 
     flags = response[4:8]
-    QDCOUNT = response[8:12]
-    ANCOUNT = response[12:16]
-    NSCOUNT = response[16:20]
-    ARCOUNT = response[20:24]
-
     flags = "{:b}".format(int(flags, 16)).zfill(16)
+
 
     QR = flags[0:1]
     decoded_response.append("QR: " + QR)
@@ -133,8 +129,15 @@ def parse_response(response):
     RCODE = flags[12:16]
     decoded_response.append("RCODE: " + RCODE)
 
+    QDCOUNT = response[8:12]
+    ANCOUNT = response[12:16]
+    NSCOUNT = response[16:20]
+    ARCOUNT = response[20:24]
+
     # Question section
     question_parts = parse_parts(response, 24, [])
+
+    # print('question parts', bytearray.fromhex(question_parts[0]).decode())
 
     QNAME = ""
     QTYPE_STARTS = 0
@@ -171,8 +174,18 @@ def parse_response(response):
                 RDDATA = response[ANSWER_SECTION_STARTS + 24:ANSWER_SECTION_STARTS + 24 + (RDLENGTH * 2)]
 
                 if ATYPE == get_type("A"):
-                    octets = [RDDATA[i:i + 2] for i in range(0, len(RDDATA), 2)]
-                    RDDATA_decoded = ".".join(list(map(lambda x: str(int(x, 16)), octets)))
+                    # octets = [RDDATA[i:i + 2] for i in range(0, len(RDDATA), 2)]
+                    # print('octets')
+                    # print(octets)
+                    ip_parts = []
+                    for i in range(0, len(RDDATA), 2):
+                        ip_parts.append(RDDATA[i:i + 2])
+
+                    RDDATA_decoded = ''
+                    for part in ip_parts:
+                        RDDATA_decoded += str(int(part, 16)) + '.'
+                    RDDATA_decoded = RDDATA_decoded[:-1]
+                    # RDDATA_decoded = ".".join(list(map(lambda x: str(int(x, 16)), ip_parts)))
                 else:
                     RDDATA_decoded = ".".join(
                         map(lambda p: binascii.unhexlify(p).decode('iso8859-1'), parse_parts(RDDATA, 0, [])))
@@ -198,6 +211,11 @@ def parse_response(response):
                 decoded_response.append("RDLENGTH: " + str(RDLENGTH))
                 decoded_response.append("RDDATA: " + RDDATA)
                 decoded_response.append("RDDATA decoded (result): " + RDDATA_decoded + "\n")
+    print('rest of the response')
+    print(response[ANSWER_SECTION_STARTS:])
+
+    # Authority
+
 
     return "\n".join(decoded_response)
 
@@ -229,3 +247,6 @@ def parse_parts(message, start, parts):
 
 if __name__ == '__main__':
     main()
+
+    # print("{:04x}".format(123))
+    # print(format(123, '04x'))
